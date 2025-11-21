@@ -1,24 +1,50 @@
-/*
- * protocol.h
- *
- * Server header file
- * Definitions, constants and function prototypes for the server
- */
+#ifndef PROTOCOL_H
+#define PROTOCOL_H
 
-#ifndef PROTOCOL_H_
-#define PROTOCOL_H_
+#if defined WIN32
+#include <winsock.h>
+typedef int socklen_t;
+#else
+#include <string.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#define closesocket close
+#endif
 
-// Shared application parameters
-#define SERVER_PORT 27015  // Server port (change if needed)
-#define BUFFER_SIZE 512    // Buffer size for messages
-#define QUEUE_SIZE 5       // Size of pending connections queue
+#include <stdio.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <time.h>
 
-// Function prototypes
-// Add here the signatures of the functions implemented by students
+// === Costanti ===
+#define SERVER_PORT 56700
+#define BUFFER_SIZE 512
 
-/*
- * Example function to implement:
- * int handle_client(int client_socket);
- */
+// === Codici di stato ===
+#define STATUS_OK 0
+#define STATUS_CITY_NOT_FOUND 1
+#define STATUS_INVALID_REQUEST 2
 
-#endif /* PROTOCOL_H_ */
+// === Strutture di protocollo ===
+typedef struct {
+    char type;        // 't', 'h', 'w', 'p'
+    char city[64];    // nome città
+} weather_request_t;
+
+typedef struct {
+    unsigned int status;
+    char type;
+    int value;
+} weather_response_t;
+
+// === Prototipi funzioni server ===
+int get_temperature(void);
+int get_humidity(void);
+int get_wind(void);
+int get_pressure(void);
+
+#endif // PROTOCOL_H

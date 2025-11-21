@@ -1,72 +1,105 @@
-/*
- * main.c
- *
- * TCP Client - Template for Computer Networks assignment
- *
- * This file contains the boilerplate code for a TCP client
- * portable across Windows, Linux and macOS.
- */
-
-#if defined WIN32
-#include <winsock.h>
-#else
-#include <string.h>
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <netdb.h>
-#define closesocket close
-#endif
-
-#include <stdio.h>
-#include <stdlib.h>
 #include "protocol.h"
+#include <ctype.h>
 
-#define NO_ERROR 0
-
-void clearwinsock() {
-#if defined WIN32
-	WSACleanup();
-#endif
+void usage(const char* progname) {
+    printf("Uso: %s [-s server] [-p port] -r \"type city\"\n", progname);
 }
 
-int main(int argc, char *argv[]) {
-
-	// TODO: Implement client logic
-
+int main(int argc, char* argv[]) {
 #if defined WIN32
-	// Initialize Winsock
-	WSADATA wsa_data;
-	int result = WSAStartup(MAKEWORD(2,2), &wsa_data);
-	if (result != NO_ERROR) {
-		printf("Error at WSAStartup()\n");
-		return 0;
-	}
+    WSADATA wsa;
+    WSAStartup(MAKEWORD(1,1), &wsa);
 #endif
 
-	int my_socket;
+    char server_ip[64] = "127.0.0.1";
+    int port = SERVER_PORT;
+    weather_request_t req = {0};
 
-	// TODO: Create socket
-	// my_socket = socket(...);
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-s") == 0 && i + 1 < argc) {
+            strcpy(server_ip, argv[++i]);
+        }
+        else if (strcmp(argv[i], "-p") == 0 && i + 1 < argc) {
+            port = atoi(argv[++i]);
+        }
+        else if (strcmp(argv[i], "-r") == 0 && i + 1 < argc) {
 
-	// TODO: Configure server address
-	// struct sockaddr_in server_addr;
-	// ...
+            if (sscanf(argv[++i], "%c %63s", &req.type, req.city) != 2) {
+                usage(argv[0]);
+                return 1;
+            }
 
-	// TODO: Connect to server
-	// connect(...);
 
-	// TODO: Implement communication logic
-	// send(...);
-	// recv(...);
+            for (int k = 0; req.city[k]; k++)
+                req.city[k] = tolower((unsigned char)req.city[k]);
 
-	// TODO: Close socket
-	// closesocket(my_socket);
 
-	printf("Client terminated.\n");
+            req.city[0] = toupper((unsigned char)req.city[0]);
+            // -------------------------------
+        }
+    }
 
-	clearwinsock();
-	return 0;
-} // main end
+    if (req.type == 0 || strlen(req.city) == 0) {
+        usage(argv[0]);
+        return 1;
+    }
+
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    struct sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(port);
+
+#if defined WIN32
+    server_addr.sin_addr.s_addr = inet_addr(server_ip);
+#else
+    inet_pton(AF_INET, server_ip, &server_addr.sin_addr);
+#endif
+
+    if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Connessione fallita");
+        return 1;
+    }
+
+    // invio della richiesta
+    send(sock, (const char*)&req, sizeof(req), 0);
+
+    // ricezione della risposta
+    weather_response_t resp;
+    int n = recv(sock, (char*)&resp, sizeof(resp), 0);
+    if (n <= 0) {
+        printf("Errore ricezione dati\n");
+        return 1;
+    }
+
+    printf("Ricevuto risultato dal server ip %s. ", server_ip);
+
+    if (resp.status == STATUS_OK) {
+        switch (resp.type) {
+            case 't':
+                printf("%s: Temperatura = %d gradi\n", req.city, resp.value);
+                break;
+            case 'h':
+                printf("%s: Umidita = %d%%\n", req.city, resp.value);
+                break;
+            case 'w':
+                printf("%s: Vento = %d km/h\n", req.city, resp.value);
+                break;
+            case 'p':
+                printf("%s: Pressione = %d hPa\n", req.city, resp.value);
+                break;
+        }
+    }
+    else if (resp.status == STATUS_CITY_NOT_FOUND) {
+        printf("Citta' non disponibile\n");
+    }
+    else {
+        printf("Richiesta non valida\n");
+    }
+
+    closesocket(sock);
+
+#if defined WIN32
+    WSACleanup();
+#endif
+    return 0;
+}

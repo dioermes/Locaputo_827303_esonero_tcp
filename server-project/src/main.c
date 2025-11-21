@@ -1,78 +1,84 @@
-/*
- * main.c
- *
- * TCP Server - Template for Computer Networks assignment
- *
- * This file contains the boilerplate code for a TCP server
- * portable across Windows, Linux and macOS.
- */
-
-#if defined WIN32
-#include <winsock.h>
-#else
-#include <string.h>
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <netdb.h>
-#define closesocket close
-#endif
-
-#include <stdio.h>
-#include <stdlib.h>
 #include "protocol.h"
 
-#define NO_ERROR 0
+// === Funzioni di generazione dati casuali (ora int) ===
+int get_temperature(void) { return rand() % 51 - 10; }   // -10 → 40 °C
+int get_humidity(void)    { return rand() % 81 + 20; }   // 20 → 100 %
+int get_wind(void)        { return rand() % 101; }       // 0 → 100 km/h
+int get_pressure(void)    { return rand() % 101 + 950; } // 950 → 1050 hPa
 
-void clearwinsock() {
-#if defined WIN32
-	WSACleanup();
-#endif
+int is_valid_city(const char* city) {
+    const char* valid_cities[] = {
+        "bari","roma","milano","napoli","torino",
+        "palermo","genova","bologna","firenze","venezia"
+    };
+    for (int i = 0; i < 10; i++)
+        if (strcasecmp(city, valid_cities[i]) == 0)
+            return 1;
+    return 0;
 }
 
-int main(int argc, char *argv[]) {
-
-	// TODO: Implement server logic
+int main(int argc, char* argv[]) {
+    srand(time(NULL));
 
 #if defined WIN32
-	// Initialize Winsock
-	WSADATA wsa_data;
-	int result = WSAStartup(MAKEWORD(2,2), &wsa_data);
-	if (result != NO_ERROR) {
-		printf("Error at WSAStartup()\n");
-		return 0;
-	}
+    WSADATA wsa;
+    WSAStartup(MAKEWORD(1,1), &wsa);
 #endif
 
-	int my_socket;
+    int port = SERVER_PORT;
+    if (argc == 3 && strcmp(argv[1], "-p") == 0)
+        port = atoi(argv[2]);
 
-	// TODO: Create socket
-	// my_socket = socket(...);
+    int server_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_socket < 0) {
+        perror("Errore creazione socket");
+        return 1;
+    }
 
-	// TODO: Configure server address
-	// struct sockaddr_in server_addr;
-	// server_addr.sin_family = AF_INET;
-	// server_addr.sin_port = htons(SERVER_PORT);
-	// server_addr.sin_addr.s_addr = INADDR_ANY;
+    struct sockaddr_in server_addr, client_addr;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_port = htons(port);
 
-	// TODO: Bind socket
-	// bind(...);
+    if (bind(server_socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Errore bind");
+        return 1;
+    }
 
-	// TODO: Set socket to listen
-	// listen(...);
+    listen(server_socket, 5);
+    printf("Server meteo in ascolto sulla porta %d...\n", port);
 
-	// TODO: Implement connection acceptance loop
-	// while (1) {
-	//     int client_socket = accept(...);
-	//     // Handle client communication
-	//     closesocket(client_socket);
-	// }
+    while (1) {
+        socklen_t client_len = sizeof(client_addr);
+        int client_socket = accept(server_socket, (struct sockaddr*)&client_addr, &client_len);
+        if (client_socket < 0) continue;
 
-	printf("Server terminated.\n");
+        weather_request_t req;
+        recv(client_socket, (char*)&req, sizeof(req), 0);
 
-	closesocket(my_socket);
-	clearwinsock();
-	return 0;
-} // main end
+        printf("Richiesta '%c %s' dal client ip %s\n",
+               req.type, req.city, inet_ntoa(client_addr.sin_addr));
+
+        weather_response_t resp = {0};
+        if (!is_valid_city(req.city)) {
+            resp.status = STATUS_CITY_NOT_FOUND;
+        } else {
+            switch (req.type) {
+                case 't': resp.value = get_temperature(); resp.status = STATUS_OK; break;
+                case 'h': resp.value = get_humidity();    resp.status = STATUS_OK; break;
+                case 'w': resp.value = get_wind();        resp.status = STATUS_OK; break;
+                case 'p': resp.value = get_pressure();    resp.status = STATUS_OK; break;
+                default:  resp.status = STATUS_INVALID_REQUEST; break;
+            }
+        }
+        resp.type = req.type;
+        send(client_socket, (const char*)&resp, sizeof(resp), 0);
+        closesocket(client_socket);
+    }
+
+#if defined WIN32
+    WSACleanup();
+#endif
+    closesocket(server_socket);
+    return 0;
+}
