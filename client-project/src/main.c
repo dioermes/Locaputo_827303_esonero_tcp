@@ -79,7 +79,7 @@ int main(int argc, char* argv[]) {
                 printf("%s: Temperatura = %d gradi\n", req.city, resp.value);
                 break;
             case 'h':
-                printf("%s: Umidita = %d%%\n", req.city, resp.value);
+                printf("%s: Umidità = %d%%\n", req.city, resp.value);
                 break;
             case 'w':
                 printf("%s: Vento = %d km/h\n", req.city, resp.value);
